@@ -4,15 +4,14 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
-// RPC endpoints for different chains
-const RPC_ENDPOINTS = {
-    ethereum: 'https://eth.public-rpc.com',
-    base: 'https://mainnet.base.org',
-    arbitrum: 'https://arb1.arbitrum.io/rpc',
-    optimism: 'https://mainnet.optimism.io'
-};
+// Ethereum mainnet RPC (using multiple endpoints for reliability)
+const RPC_ENDPOINTS = [
+    'https://eth.llamarpc.com',
+    'https://ethereum.publicnode.com',
+    'https://rpc.ankr.com/eth'
+];
 
-let currentChain = 'base';
+let currentEndpointIndex = 0;
 let soundEnabled = false;
 
 // Weather state
@@ -68,47 +67,71 @@ initClouds();
 
 // Fetch network data
 async function fetchNetworkData() {
-    const rpcUrl = RPC_ENDPOINTS[currentChain];
+    const rpcUrl = RPC_ENDPOINTS[currentEndpointIndex];
     
     try {
-        const payload = [
-            { jsonrpc: '2.0', method: 'eth_gasPrice', params: [], id: 1 },
-            { jsonrpc: '2.0', method: 'eth_getBlockByNumber', params: ['latest', false], id: 2 },
-            { jsonrpc: '2.0', method: 'eth_feeHistory', params: ['0x5', 'latest', [25, 50, 75]], id: 3 }
-        ];
-        
+        // Single batch request
         const res = await fetch(rpcUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'eth_getBlockByNumber',
+                params: ['latest', false],
+                id: 1
+            })
         });
+        
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
         
         const data = await res.json();
         
-        // Parse responses
-        const gasPrice = parseInt(data[0]?.result || '0x0', 16) / 1e9; // Convert to gwei
-        const block = data[1]?.result;
-        const blockNumber = parseInt(block?.number || '0x0', 16);
-        const gasUsed = parseInt(block?.gasUsed || '0x0', 16);
-        const gasLimit = parseInt(block?.gasLimit || '0x0', 16);
+        if (data.error) {
+            throw new Error(data.error.message);
+        }
+        
+        const block = data.result;
+        
+        if (!block) {
+            throw new Error('No block data');
+        }
+        
+        // Parse block data
+        const blockNumber = parseInt(block.number, 16);
+        const gasUsed = parseInt(block.gasUsed, 16);
+        const gasLimit = parseInt(block.gasLimit, 16);
+        const baseFeePerGas = parseInt(block.baseFeePerGas || '0x0', 16) / 1e9; // gwei
         const blockUsage = gasLimit > 0 ? (gasUsed / gasLimit) * 100 : 0;
         
+        console.log('Block data:', {
+            blockNumber,
+            gasUsed,
+            gasLimit,
+            baseFeePerGas: baseFeePerGas.toFixed(2),
+            blockUsage: blockUsage.toFixed(1)
+        });
+        
         // Update weather state
-        updateWeatherState(gasPrice, blockUsage, blockNumber);
+        updateWeatherState(baseFeePerGas, blockUsage, blockNumber);
         
     } catch (error) {
-        console.error('Failed to fetch network data:', error);
+        console.error('RPC error:', error.message);
+        // Try next endpoint
+        currentEndpointIndex = (currentEndpointIndex + 1) % RPC_ENDPOINTS.length;
+        console.log('Switching to endpoint:', RPC_ENDPOINTS[currentEndpointIndex]);
     }
 }
 
 // Map network metrics to weather
 function updateWeatherState(gasPrice, blockUsage, blockNumber) {
     // Smooth transitions using exponential moving average
-    const alpha = 0.2;
+    const alpha = 0.3;
     
     // Gas price determines "temperature" and storm intensity
-    // Base typically has low gas, Ethereum can spike high
-    const gasFactor = Math.min(gasPrice / (currentChain === 'ethereum' ? 50 : 0.01), 1);
+    // Ethereum mainnet: ~5-50 gwei normal, 50-200+ gwei high
+    const gasFactor = Math.min(gasPrice / 80, 1);
     weatherState.temperature = weatherState.temperature * (1 - alpha) + gasFactor * alpha;
     
     // Block usage determines wind and precipitation
@@ -118,7 +141,7 @@ function updateWeatherState(gasPrice, blockUsage, blockNumber) {
     weatherState.precipitation = weatherState.precipitation * (1 - alpha) + usageFactor * alpha;
     
     // Overall intensity (0-1)
-    weatherState.intensity = (weatherState.temperature + weatherState.windSpeed) / 2;
+    weatherState.intensity = (weatherState.temperature * 0.6 + weatherState.windSpeed * 0.4);
     
     // Determine weather condition
     if (weatherState.intensity < 0.2) {
@@ -134,12 +157,12 @@ function updateWeatherState(gasPrice, blockUsage, blockNumber) {
     }
     
     // Occasional lightning during high activity
-    if (weatherState.intensity > 0.7 && Math.random() < 0.02) {
+    if (weatherState.intensity > 0.6 && Math.random() < 0.03) {
         triggerLightning();
     }
     
     // Update UI
-    document.getElementById('gas-price').textContent = gasPrice.toFixed(4) + ' gwei';
+    document.getElementById('gas-price').textContent = gasPrice.toFixed(2) + ' gwei';
     document.getElementById('block-usage').textContent = blockUsage.toFixed(1) + '%';
     document.getElementById('block-number').textContent = blockNumber.toLocaleString();
     document.getElementById('weather-condition').textContent = weatherState.condition;
@@ -343,15 +366,11 @@ fetchNetworkData();
 setInterval(fetchNetworkData, 10000);
 
 // Controls
-document.getElementById('chain-select').addEventListener('change', (e) => {
-    currentChain = e.target.value;
-    fetchNetworkData();
-});
-
 document.getElementById('screenshot-btn').addEventListener('click', () => {
     const link = document.createElement('a');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    link.download = `ethereum-weather-${currentChain}-${timestamp}.png`;
+    const blockNum = weatherState.gasPrice ? document.getElementById('block-number').textContent : 'unknown';
+    link.download = `ethereum-weather-${blockNum}-${timestamp}.png`;
     link.href = canvas.toDataURL();
     link.click();
 });
