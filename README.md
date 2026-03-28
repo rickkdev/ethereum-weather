@@ -37,6 +37,10 @@ These metrics map to visual parameters:
 
 All animation runs at 60fps using `requestAnimationFrame` with exponential smoothing for natural transitions.
 
+## 🌐 Live Demo
+
+**https://rickkdev.github.io/ethereum-weather/**
+
 ## 🚀 Run Locally
 
 ```bash
