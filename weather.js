@@ -28,7 +28,9 @@ let weatherState = {
 
 // Particles for rain/snow/debris
 let particles = [];
-const MAX_PARTICLES = 200;
+// Detect mobile for performance
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const MAX_PARTICLES = isMobile ? 80 : 150;
 
 // Clouds
 let clouds = [];
@@ -51,12 +53,13 @@ window.addEventListener('resize', resizeCanvas);
 // Initialize clouds
 function initClouds() {
     clouds = [];
-    for (let i = 0; i < MAX_CLOUDS; i++) {
+    const cloudCount = isMobile ? 5 : MAX_CLOUDS;
+    for (let i = 0; i < cloudCount; i++) {
         clouds.push({
             x: Math.random() * canvas.width,
             y: Math.random() * canvas.height * 0.3,
             size: 50 + Math.random() * 150,
-            speed: 0.2 + Math.random() * 0.5,
+            speed: 0.1 + Math.random() * 0.3,  // Slower clouds
             opacity: 0.2 + Math.random() * 0.3
         });
     }
@@ -159,11 +162,11 @@ function createParticle() {
     return {
         x: Math.random() * canvas.width,
         y: -10,
-        speedY: 2 + weatherState.intensity * 8,
-        speedX: (Math.random() - 0.5) * weatherState.windSpeed * 3,
-        size: 0.5 + Math.random() * 1,
-        length: 10 + Math.random() * 20,
-        opacity: 0.2 + Math.random() * 0.3
+        speedY: 1 + weatherState.intensity * 3,  // Slower
+        speedX: (Math.random() - 0.5) * weatherState.windSpeed * 1.5,  // Less horizontal movement
+        size: isMobile ? 1 : 0.8,
+        length: isMobile ? 8 : 12,
+        opacity: 0.15 + Math.random() * 0.25
     };
 }
 
@@ -171,15 +174,20 @@ function createParticle() {
 function updateParticles(deltaTime) {
     const targetParticleCount = Math.floor(weatherState.precipitation * MAX_PARTICLES);
     
-    // Add particles if needed
-    while (particles.length < targetParticleCount) {
+    // Add particles gradually (max 2 per frame)
+    let addCount = 0;
+    while (particles.length < targetParticleCount && addCount < 2) {
         particles.push(createParticle());
+        addCount++;
     }
+    
+    // Normalize deltaTime to prevent huge jumps on mobile
+    const normalizedDelta = Math.min(deltaTime / 16.67, 2);
     
     // Update and remove particles
     particles = particles.filter(p => {
-        p.y += p.speedY;
-        p.x += p.speedX;
+        p.y += p.speedY * normalizedDelta;
+        p.x += p.speedX * normalizedDelta;
         
         // Remove off-screen particles
         if (p.y > canvas.height || p.x < -10 || p.x > canvas.width + 10) {
@@ -219,9 +227,11 @@ function drawSky() {
 
 // Draw clouds
 function drawClouds(deltaTime) {
+    const normalizedDelta = Math.min(deltaTime / 16.67, 2);
+    
     clouds.forEach(cloud => {
-        // Update position
-        cloud.x += cloud.speed * (0.5 + weatherState.windSpeed);
+        // Update position (slower on mobile)
+        cloud.x += cloud.speed * (0.3 + weatherState.windSpeed * 0.5) * normalizedDelta;
         if (cloud.x > canvas.width + cloud.size) {
             cloud.x = -cloud.size;
         }
@@ -231,9 +241,10 @@ function drawClouds(deltaTime) {
         
         // Draw cloud as soft blurred circles
         ctx.save();
-        ctx.filter = 'blur(40px)';
+        ctx.filter = isMobile ? 'blur(30px)' : 'blur(40px)';
         
-        for (let i = 0; i < 3; i++) {
+        const layers = isMobile ? 2 : 3;
+        for (let i = 0; i < layers; i++) {
             const offsetX = (i - 1) * cloud.size * 0.3;
             const offsetY = (i - 1) * cloud.size * 0.1;
             ctx.fillStyle = `rgba(255, 255, 255, ${opacity * (0.6 + i * 0.2)})`;
