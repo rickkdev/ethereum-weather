@@ -1,0 +1,347 @@
+// Ethereum Weather - Live Network Visualization
+// Turns blockchain activity into beautiful animated weather
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// RPC endpoints for different chains
+const RPC_ENDPOINTS = {
+    ethereum: 'https://eth.public-rpc.com',
+    base: 'https://mainnet.base.org',
+    arbitrum: 'https://arb1.arbitrum.io/rpc',
+    optimism: 'https://mainnet.optimism.io'
+};
+
+let currentChain = 'base';
+let soundEnabled = false;
+
+// Weather state
+let weatherState = {
+    gasPrice: 0,
+    blockUsage: 0,
+    intensity: 0, // 0-1 overall activity
+    temperature: 0, // 0-1 heat/congestion
+    windSpeed: 0,
+    precipitation: 0,
+    condition: 'Clear'
+};
+
+// Particles for rain/snow/debris
+let particles = [];
+const MAX_PARTICLES = 300;
+
+// Clouds
+let clouds = [];
+const MAX_CLOUDS = 8;
+
+// Lightning flashes
+let lightningFlashes = [];
+
+// Smooth animation
+let animationTime = 0;
+
+// Canvas setup
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// Initialize clouds
+function initClouds() {
+    clouds = [];
+    for (let i = 0; i < MAX_CLOUDS; i++) {
+        clouds.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height * 0.3,
+            size: 50 + Math.random() * 150,
+            speed: 0.2 + Math.random() * 0.5,
+            opacity: 0.2 + Math.random() * 0.3
+        });
+    }
+}
+initClouds();
+
+// Fetch network data
+async function fetchNetworkData() {
+    const rpcUrl = RPC_ENDPOINTS[currentChain];
+    
+    try {
+        const payload = [
+            { jsonrpc: '2.0', method: 'eth_gasPrice', params: [], id: 1 },
+            { jsonrpc: '2.0', method: 'eth_getBlockByNumber', params: ['latest', false], id: 2 },
+            { jsonrpc: '2.0', method: 'eth_feeHistory', params: ['0x5', 'latest', [25, 50, 75]], id: 3 }
+        ];
+        
+        const res = await fetch(rpcUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        
+        // Parse responses
+        const gasPrice = parseInt(data[0]?.result || '0x0', 16) / 1e9; // Convert to gwei
+        const block = data[1]?.result;
+        const blockNumber = parseInt(block?.number || '0x0', 16);
+        const gasUsed = parseInt(block?.gasUsed || '0x0', 16);
+        const gasLimit = parseInt(block?.gasLimit || '0x0', 16);
+        const blockUsage = gasLimit > 0 ? (gasUsed / gasLimit) * 100 : 0;
+        
+        // Update weather state
+        updateWeatherState(gasPrice, blockUsage, blockNumber);
+        
+    } catch (error) {
+        console.error('Failed to fetch network data:', error);
+    }
+}
+
+// Map network metrics to weather
+function updateWeatherState(gasPrice, blockUsage, blockNumber) {
+    // Smooth transitions using exponential moving average
+    const alpha = 0.2;
+    
+    // Gas price determines "temperature" and storm intensity
+    // Base typically has low gas, Ethereum can spike high
+    const gasFactor = Math.min(gasPrice / (currentChain === 'ethereum' ? 50 : 0.01), 1);
+    weatherState.temperature = weatherState.temperature * (1 - alpha) + gasFactor * alpha;
+    
+    // Block usage determines wind and precipitation
+    const usageFactor = blockUsage / 100;
+    weatherState.blockUsage = blockUsage;
+    weatherState.windSpeed = weatherState.windSpeed * (1 - alpha) + usageFactor * alpha;
+    weatherState.precipitation = weatherState.precipitation * (1 - alpha) + usageFactor * alpha;
+    
+    // Overall intensity (0-1)
+    weatherState.intensity = (weatherState.temperature + weatherState.windSpeed) / 2;
+    
+    // Determine weather condition
+    if (weatherState.intensity < 0.2) {
+        weatherState.condition = 'Clear';
+    } else if (weatherState.intensity < 0.4) {
+        weatherState.condition = 'Partly Cloudy';
+    } else if (weatherState.intensity < 0.6) {
+        weatherState.condition = 'Cloudy';
+    } else if (weatherState.intensity < 0.8) {
+        weatherState.condition = 'Rainy';
+    } else {
+        weatherState.condition = 'Stormy';
+    }
+    
+    // Occasional lightning during high activity
+    if (weatherState.intensity > 0.7 && Math.random() < 0.02) {
+        triggerLightning();
+    }
+    
+    // Update UI
+    document.getElementById('gas-price').textContent = gasPrice.toFixed(4) + ' gwei';
+    document.getElementById('block-usage').textContent = blockUsage.toFixed(1) + '%';
+    document.getElementById('block-number').textContent = blockNumber.toLocaleString();
+    document.getElementById('weather-condition').textContent = weatherState.condition;
+    document.getElementById('weather-label').textContent = weatherState.condition;
+    
+    weatherState.gasPrice = gasPrice;
+}
+
+// Lightning effect
+function triggerLightning() {
+    lightningFlashes.push({
+        time: 0,
+        duration: 150,
+        intensity: 0.3 + Math.random() * 0.5
+    });
+}
+
+// Create particle
+function createParticle() {
+    return {
+        x: Math.random() * canvas.width,
+        y: -10,
+        speedY: 2 + weatherState.intensity * 8,
+        speedX: (Math.random() - 0.5) * weatherState.windSpeed * 3,
+        size: 1 + Math.random() * 2,
+        opacity: 0.3 + Math.random() * 0.4
+    };
+}
+
+// Update particles
+function updateParticles(deltaTime) {
+    const targetParticleCount = Math.floor(weatherState.precipitation * MAX_PARTICLES);
+    
+    // Add particles if needed
+    while (particles.length < targetParticleCount) {
+        particles.push(createParticle());
+    }
+    
+    // Update and remove particles
+    particles = particles.filter(p => {
+        p.y += p.speedY;
+        p.x += p.speedX;
+        
+        // Remove off-screen particles
+        if (p.y > canvas.height || p.x < -10 || p.x > canvas.width + 10) {
+            return false;
+        }
+        return true;
+    });
+}
+
+// Draw sky gradient
+function drawSky() {
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    
+    // Sky color based on intensity
+    let topColor, bottomColor;
+    
+    if (weatherState.intensity < 0.3) {
+        // Clear sky
+        topColor = `rgba(15, 32, 60, 1)`;
+        bottomColor = `rgba(30, 60, 100, 1)`;
+    } else if (weatherState.intensity < 0.6) {
+        // Cloudy
+        topColor = `rgba(40, 50, 70, 1)`;
+        bottomColor = `rgba(60, 70, 90, 1)`;
+    } else {
+        // Stormy
+        topColor = `rgba(20, 25, 40, 1)`;
+        bottomColor = `rgba(35, 40, 55, 1)`;
+    }
+    
+    gradient.addColorStop(0, topColor);
+    gradient.addColorStop(1, bottomColor);
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// Draw clouds
+function drawClouds(deltaTime) {
+    clouds.forEach(cloud => {
+        // Update position
+        cloud.x += cloud.speed * (0.5 + weatherState.windSpeed);
+        if (cloud.x > canvas.width + cloud.size) {
+            cloud.x = -cloud.size;
+        }
+        
+        // Cloud opacity based on intensity
+        const opacity = cloud.opacity * (0.5 + weatherState.intensity * 0.5);
+        
+        // Draw cloud as soft circles
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.filter = 'blur(30px)';
+        
+        for (let i = 0; i < 3; i++) {
+            const offsetX = (i - 1) * cloud.size * 0.3;
+            const offsetY = (Math.random() - 0.5) * cloud.size * 0.2;
+            ctx.beginPath();
+            ctx.arc(
+                cloud.x + offsetX,
+                cloud.y + offsetY,
+                cloud.size * (0.6 + Math.random() * 0.4),
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+        }
+        
+        ctx.filter = 'none';
+    });
+}
+
+// Draw particles (rain/snow)
+function drawParticles() {
+    ctx.fillStyle = 'rgba(200, 220, 255, 0.6)';
+    
+    particles.forEach(p => {
+        ctx.globalAlpha = p.opacity;
+        ctx.fillRect(p.x, p.y, p.size, p.size * 4);
+    });
+    
+    ctx.globalAlpha = 1;
+}
+
+// Draw lightning
+function drawLightning(deltaTime) {
+    lightningFlashes = lightningFlashes.filter(flash => {
+        flash.time += deltaTime;
+        
+        if (flash.time < flash.duration) {
+            const alpha = 1 - (flash.time / flash.duration);
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha * flash.intensity})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Lightning bolt
+            if (Math.random() < 0.3) {
+                ctx.strokeStyle = `rgba(200, 220, 255, ${alpha})`;
+                ctx.lineWidth = 2 + Math.random() * 3;
+                ctx.beginPath();
+                const startX = Math.random() * canvas.width;
+                ctx.moveTo(startX, 0);
+                
+                let currentX = startX;
+                let currentY = 0;
+                
+                for (let i = 0; i < 8; i++) {
+                    currentX += (Math.random() - 0.5) * 50;
+                    currentY += canvas.height / 8;
+                    ctx.lineTo(currentX, currentY);
+                }
+                ctx.stroke();
+            }
+            
+            return true;
+        }
+        return false;
+    });
+}
+
+// Main render loop
+let lastTime = Date.now();
+function render() {
+    const now = Date.now();
+    const deltaTime = now - lastTime;
+    lastTime = now;
+    
+    animationTime += deltaTime / 1000;
+    
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw layers
+    drawSky();
+    drawClouds(deltaTime);
+    updateParticles(deltaTime);
+    drawParticles();
+    drawLightning(deltaTime);
+    
+    requestAnimationFrame(render);
+}
+
+// Start rendering
+render();
+
+// Fetch data every 10 seconds
+fetchNetworkData();
+setInterval(fetchNetworkData, 10000);
+
+// Controls
+document.getElementById('chain-select').addEventListener('change', (e) => {
+    currentChain = e.target.value;
+    fetchNetworkData();
+});
+
+document.getElementById('screenshot-btn').addEventListener('click', () => {
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    link.download = `ethereum-weather-${currentChain}-${timestamp}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+});
+
+document.getElementById('sound-btn').addEventListener('click', (e) => {
+    soundEnabled = !soundEnabled;
+    e.target.textContent = soundEnabled ? '🔊 Sound' : '🔇 Sound';
+    // TODO: Implement web audio ambient sounds
+});

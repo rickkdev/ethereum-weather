@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereum Weather - Live Network Atmosphere</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
+            background: #0a0e27;
+        }
+        
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .btn, select {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover, select:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-1px);
+        }
+        
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding-right: 32px;
+        }
+        
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px 20px;
+            color: white;
+            font-size: 13px;
+            line-height: 1.6;
+            min-width: 250px;
+        }
+        
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        
+        .stats-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .stats-label {
+            opacity: 0.7;
+        }
+        
+        .stats-value {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .weather-label {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: 200;
+            color: rgba(255, 255, 255, 0.3);
+            text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            letter-spacing: 2px;
+        }
+        
+        @media (max-width: 600px) {
+            .controls {
+                top: 10px;
+                left: 10px;
+                gap: 8px;
+            }
+            
+            .stats {
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+                min-width: unset;
+                padding: 12px 16px;
+                font-size: 12px;
+            }
+            
+            .weather-label {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <select id="chain-select">
+            <option value="ethereum">Ethereum</option>
+            <option value="base" selected>Base</option>
+            <option value="arbitrum">Arbitrum</option>
+            <option value="optimism">Optimism</option>
+        </select>
+        <button class="btn" id="screenshot-btn">📸 Capture</button>
+        <button class="btn" id="sound-btn">🔇 Sound</button>
+    </div>
+    
+    <div class="weather-label" id="weather-label">Calm</div>
+    
+    <div class="stats">
+        <div class="stats-row">
+            <span class="stats-label">Gas Price</span>
+            <span class="stats-value" id="gas-price">-- gwei</span>
+        </div>
+        <div class="stats-row">
+            <span class="stats-label">Block Usage</span>
+            <span class="stats-value" id="block-usage">--%</span>
+        </div>
+        <div class="stats-row">
+            <span class="stats-label">Latest Block</span>
+            <span class="stats-value" id="block-number">--</span>
+        </div>
+        <div class="stats-row">
+            <span class="stats-label">Weather</span>
+            <span class="stats-value" id="weather-condition">Clear</span>
+        </div>
+    </div>
+    
+    <script src="weather.js"></script>
+</body>
+</html>
