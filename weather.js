@@ -28,7 +28,7 @@ let weatherState = {
 
 // Particles for rain/snow/debris
 let particles = [];
-const MAX_PARTICLES = 300;
+const MAX_PARTICLES = 200;
 
 // Clouds
 let clouds = [];
@@ -161,8 +161,9 @@ function createParticle() {
         y: -10,
         speedY: 2 + weatherState.intensity * 8,
         speedX: (Math.random() - 0.5) * weatherState.windSpeed * 3,
-        size: 1 + Math.random() * 2,
-        opacity: 0.3 + Math.random() * 0.4
+        size: 0.5 + Math.random() * 1,
+        length: 10 + Math.random() * 20,
+        opacity: 0.2 + Math.random() * 0.3
     };
 }
 
@@ -228,38 +229,42 @@ function drawClouds(deltaTime) {
         // Cloud opacity based on intensity
         const opacity = cloud.opacity * (0.5 + weatherState.intensity * 0.5);
         
-        // Draw cloud as soft circles
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-        ctx.filter = 'blur(30px)';
+        // Draw cloud as soft blurred circles
+        ctx.save();
+        ctx.filter = 'blur(40px)';
         
         for (let i = 0; i < 3; i++) {
             const offsetX = (i - 1) * cloud.size * 0.3;
-            const offsetY = (Math.random() - 0.5) * cloud.size * 0.2;
+            const offsetY = (i - 1) * cloud.size * 0.1;
+            ctx.fillStyle = `rgba(255, 255, 255, ${opacity * (0.6 + i * 0.2)})`;
             ctx.beginPath();
             ctx.arc(
                 cloud.x + offsetX,
                 cloud.y + offsetY,
-                cloud.size * (0.6 + Math.random() * 0.4),
+                cloud.size * (0.7 + i * 0.15),
                 0,
                 Math.PI * 2
             );
             ctx.fill();
         }
         
-        ctx.filter = 'none';
+        ctx.restore();
     });
 }
 
 // Draw particles (rain/snow)
 function drawParticles() {
-    ctx.fillStyle = 'rgba(200, 220, 255, 0.6)';
-    
     particles.forEach(p => {
-        ctx.globalAlpha = p.opacity;
-        ctx.fillRect(p.x, p.y, p.size, p.size * 4);
+        // Draw as thin lines for rain effect
+        ctx.strokeStyle = `rgba(200, 220, 255, ${p.opacity})`;
+        ctx.lineWidth = p.size;
+        ctx.lineCap = 'round';
+        
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.speedX * 2, p.y + p.length);
+        ctx.stroke();
     });
-    
-    ctx.globalAlpha = 1;
 }
 
 // Draw lightning
